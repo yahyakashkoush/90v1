@@ -1,0 +1,13 @@
+# Server files (not needed for frontend deployment)
+server/
+*.log
+.env.local
+.env
+
+# Development files
+start.sh
+docker-compose.yml
+Dockerfile*
+
+# Documentation
+DEPLOYMENT.md
