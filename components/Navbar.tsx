@@ -3,18 +3,34 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
+import CartSidebar from './CartSidebar'
+import { CartManager } from '@/lib/cart'
 
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isCartOpen, setIsCartOpen] = useState(false)
+  const [cartItemCount, setCartItemCount] = useState(0)
 
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 50)
     }
 
+    const updateCartCount = () => {
+      setCartItemCount(CartManager.getCartItemCount())
+    }
+
     window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
+    window.addEventListener('cartUpdated', updateCartCount)
+    
+    // Initial cart count
+    updateCartCount()
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('cartUpdated', updateCartCount)
+    }
   }, [])
 
   const navItems = [
@@ -70,8 +86,23 @@ export default function Navbar() {
             ))}
           </div>
 
-          {/* CTA Button */}
+          {/* Actions */}
           <div className="hidden md:flex items-center space-x-4">
+            {/* Cart Button */}
+            <button
+              onClick={() => setIsCartOpen(true)}
+              className="relative p-2 text-white hover:text-neon-cyan transition-colors duration-300"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-1.1 5H19M7 13v8a2 2 0 002 2h6a2 2 0 002-2v-8m-8 0V9a2 2 0 012-2h4a2 2 0 012 2v4.01" />
+              </svg>
+              {cartItemCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-neon-pink text-black text-xs font-bold rounded-full flex items-center justify-center">
+                  {cartItemCount > 9 ? '9+' : cartItemCount}
+                </span>
+              )}
+            </button>
+
             <Link
               href="/try-on"
               className="relative px-6 py-2 bg-gradient-to-r from-neon-pink to-neon-cyan text-black font-cyber font-bold text-sm uppercase tracking-wider rounded-lg overflow-hidden group"
@@ -125,6 +156,9 @@ export default function Navbar() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Cart Sidebar */}
+      <CartSidebar isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
     </motion.nav>
   )
 }

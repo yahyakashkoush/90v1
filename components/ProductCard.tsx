@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Product } from '@/types'
+import { CartManager } from '@/lib/cart'
 
 interface ProductCardProps {
   product: Product
@@ -13,10 +14,37 @@ interface ProductCardProps {
 export default function ProductCard({ product }: ProductCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isHovered, setIsHovered] = useState(false)
+  const [isAddingToCart, setIsAddingToCart] = useState(false)
 
   const handleImageHover = () => {
     if (product.images.length > 1) {
       setCurrentImageIndex((prev) => (prev + 1) % product.images.length)
+    }
+  }
+
+  const handleQuickAdd = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (!product.inStock) return
+    
+    setIsAddingToCart(true)
+    
+    try {
+      // Add with default size and color
+      const defaultSize = product.sizes[0] || 'M'
+      const defaultColor = product.colors[0] || 'Default'
+      
+      const success = CartManager.addToCart(product.id, 1, defaultSize, defaultColor)
+      if (success) {
+        // Show brief success feedback
+        setTimeout(() => setIsAddingToCart(false), 1000)
+      } else {
+        setIsAddingToCart(false)
+      }
+    } catch (error) {
+      console.error('Error adding to cart:', error)
+      setIsAddingToCart(false)
     }
   }
 
@@ -144,8 +172,12 @@ export default function ProductCard({ product }: ProductCardProps) {
             </Link>
             
             {product.inStock && (
-              <button className="px-4 py-2 border border-neon-cyan text-neon-cyan font-cyber font-bold text-sm rounded-lg hover:bg-neon-cyan hover:text-black transition-colors duration-300">
-                ADD
+              <button 
+                onClick={handleQuickAdd}
+                disabled={isAddingToCart}
+                className="px-4 py-2 border border-neon-cyan text-neon-cyan font-cyber font-bold text-sm rounded-lg hover:bg-neon-cyan hover:text-black transition-colors duration-300 disabled:opacity-50"
+              >
+                {isAddingToCart ? '✓' : 'ADD'}
               </button>
             )}
           </div>

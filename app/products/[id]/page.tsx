@@ -4,27 +4,13 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 import Model3DViewer from '@/components/Model3DViewer'
 import { Product } from '@/types'
-
-// Mock product data
-const mockProduct: Product = {
-  id: '1',
-  name: 'Cyber Neon Jacket',
-  description: 'Step into the future with our signature Cyber Neon Jacket. This revolutionary piece combines cutting-edge LED technology with premium materials to create a garment that\'s both functional and visually stunning. Perfect for the modern cyberpunk enthusiast.',
-  price: 299,
-  images: ['/api/placeholder/600/800', '/api/placeholder/600/800', '/api/placeholder/600/800'],
-  category: 'Outerwear',
-  sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-  colors: ['Neon Pink', 'Cyber Blue', 'Electric Green', 'Plasma Purple'],
-  inStock: true,
-  featured: true,
-  model3D: '/models/cyber-jacket.glb',
-  createdAt: new Date(),
-  updatedAt: new Date()
-}
+import { ProductManager } from '@/lib/products'
+import { CartManager } from '@/lib/cart'
 
 export default function ProductDetailPage() {
   const params = useParams()
@@ -35,16 +21,43 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [showModel3D, setShowModel3D] = useState(false)
+  const [isAddingToCart, setIsAddingToCart] = useState(false)
 
   useEffect(() => {
-    // Simulate API call
+    const productId = params.id as string
+    
+    // Load product from ProductManager
     setTimeout(() => {
-      setProduct(mockProduct)
-      setSelectedColor(mockProduct.colors[0])
-      setSelectedSize(mockProduct.sizes[2]) // Default to 'L'
+      const foundProduct = ProductManager.getProductById(productId)
+      if (foundProduct) {
+        setProduct(foundProduct)
+        setSelectedColor(foundProduct.colors[0] || '')
+        setSelectedSize(foundProduct.sizes[0] || '')
+      }
       setIsLoading(false)
-    }, 1000)
+    }, 500)
   }, [params.id])
+
+  const handleAddToCart = async () => {
+    if (!product || !selectedSize || !selectedColor) return
+    
+    setIsAddingToCart(true)
+    
+    try {
+      const success = CartManager.addToCart(product.id, quantity, selectedSize, selectedColor)
+      if (success) {
+        // Show success feedback
+        alert('Product added to cart!')
+      } else {
+        alert('Failed to add product to cart')
+      }
+    } catch (error) {
+      console.error('Error adding to cart:', error)
+      alert('Failed to add product to cart')
+    } finally {
+      setIsAddingToCart(false)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -129,6 +142,18 @@ export default function ProductDetailPage() {
                       productName={product.name}
                       className="w-full h-full"
                     />
+                  ) : product.images.length > 0 ? (
+                    <Image
+                      src={product.images[selectedImage]}
+                      alt={product.name}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.src = '/api/placeholder/600/800'
+                      }}
+                    />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-neon-pink/20 to-neon-cyan/20 flex items-center justify-center">
                       <div className="text-8xl text-neon-cyan/50">👕</div>
@@ -159,9 +184,17 @@ export default function ProductDetailPage() {
                           : 'border-gray-600 hover:border-gray-400'
                       }`}
                     >
-                      <div className="w-full h-full bg-gradient-to-br from-neon-pink/20 to-neon-cyan/20 flex items-center justify-center">
-                        <div className="text-2xl text-neon-cyan/50">👕</div>
-                      </div>
+                      <Image
+                        src={image}
+                        alt={`${product.name} ${index + 1}`}
+                        width={80}
+                        height={96}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.src = '/api/placeholder/80/96'
+                        }}
+                      />
                     </button>
                   ))}
                   
@@ -278,8 +311,26 @@ export default function ProductDetailPage() {
 
                 {/* Actions */}
                 <div className="space-y-4">
-                  <button className="w-full py-4 bg-gradient-to-r from-neon-pink to-neon-cyan text-black font-cyber font-bold text-lg uppercase tracking-wider rounded-lg hover:scale-105 transition-transform duration-300">
-                    Add to Cart
+                  <button 
+                    onClick={handleAddToCart}
+                    disabled={isAddingToCart || !selectedSize || !selectedColor || !product.inStock}
+                    className="w-full py-4 bg-gradient-to-r from-neon-pink to-neon-cyan text-black font-cyber font-bold text-lg uppercase tracking-wider rounded-lg hover:scale-105 transition-transform duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isAddingToCart ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="loading-dots scale-50">
+                          <div></div>
+                          <div></div>
+                          <div></div>
+                          <div></div>
+                        </div>
+                        Adding...
+                      </div>
+                    ) : !product.inStock ? (
+                      'Out of Stock'
+                    ) : (
+                      'Add to Cart'
+                    )}
                   </button>
                   
                   <div className="grid grid-cols-2 gap-4">

@@ -12,13 +12,15 @@ const defaultProducts: Product[] = [
     price: 299,
     images: [
       'https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=400&h=500&fit=crop&crop=center',
-      'https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?w=400&h=500&fit=crop&crop=center'
+      'https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?w=400&h=500&fit=crop&crop=center',
+      'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400&h=500&fit=crop&crop=center'
     ],
     category: 'Outerwear',
     sizes: ['S', 'M', 'L', 'XL'],
     colors: ['Neon Pink', 'Cyber Blue', 'Electric Green'],
     inStock: true,
     featured: true,
+    model3D: '/models/cyber-jacket.glb',
     createdAt: new Date(),
     updatedAt: new Date()
   },
