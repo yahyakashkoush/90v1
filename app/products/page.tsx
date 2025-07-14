@@ -6,94 +6,7 @@ import Navbar from '@/components/Navbar'
 import ProductCard from '@/components/ProductCard'
 import Footer from '@/components/Footer'
 import { Product } from '@/types'
-
-// Mock data - in real app this would come from API
-const mockProducts: Product[] = [
-  {
-    id: '1',
-    name: 'Cyber Neon Jacket',
-    description: 'Futuristic jacket with LED accents and holographic details',
-    price: 299,
-    images: ['/api/placeholder/400/500'],
-    category: 'Outerwear',
-    sizes: ['S', 'M', 'L', 'XL'],
-    colors: ['Neon Pink', 'Cyber Blue', 'Electric Green'],
-    inStock: true,
-    featured: true,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  },
-  {
-    id: '2',
-    name: 'Retro Wave Hoodie',
-    description: 'Vintage-inspired hoodie with synthwave graphics',
-    price: 189,
-    images: ['/api/placeholder/400/500'],
-    category: 'Hoodies',
-    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    colors: ['Purple Haze', 'Sunset Orange', 'Midnight Black'],
-    inStock: true,
-    featured: true,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  },
-  {
-    id: '3',
-    name: 'Holographic Pants',
-    description: 'Iridescent pants that shift colors in different lighting',
-    price: 249,
-    images: ['/api/placeholder/400/500'],
-    category: 'Bottoms',
-    sizes: ['28', '30', '32', '34', '36'],
-    colors: ['Rainbow', 'Silver Chrome', 'Gold Prism'],
-    inStock: true,
-    featured: false,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  },
-  {
-    id: '4',
-    name: 'Digital Mesh Top',
-    description: 'Transparent mesh top with embedded fiber optics',
-    price: 159,
-    images: ['/api/placeholder/400/500'],
-    category: 'Tops',
-    sizes: ['XS', 'S', 'M', 'L'],
-    colors: ['Neon Blue', 'Electric Pink', 'Laser Green'],
-    inStock: true,
-    featured: true,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  },
-  {
-    id: '5',
-    name: 'Quantum Sneakers',
-    description: 'Self-lacing sneakers with reactive LED soles',
-    price: 399,
-    images: ['/api/placeholder/400/500'],
-    category: 'Footwear',
-    sizes: ['7', '8', '9', '10', '11', '12'],
-    colors: ['Void Black', 'Plasma White', 'Neon Fusion'],
-    inStock: true,
-    featured: true,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  },
-  {
-    id: '6',
-    name: 'Cyberpunk Visor',
-    description: 'AR-enabled visor with heads-up display',
-    price: 599,
-    images: ['/api/placeholder/400/500'],
-    category: 'Accessories',
-    sizes: ['One Size'],
-    colors: ['Chrome', 'Matte Black', 'Neon Accent'],
-    inStock: false,
-    featured: false,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  }
-]
+import { ProductManager } from '@/lib/products'
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([])
@@ -106,10 +19,11 @@ export default function ProductsPage() {
   const categories = ['All', 'Outerwear', 'Hoodies', 'Tops', 'Bottoms', 'Footwear', 'Accessories']
 
   useEffect(() => {
-    // Simulate API call
+    // Load products from ProductManager
     setTimeout(() => {
-      setProducts(mockProducts)
-      setFilteredProducts(mockProducts)
+      const loadedProducts = ProductManager.getProducts()
+      setProducts(loadedProducts)
+      setFilteredProducts(loadedProducts)
       setIsLoading(false)
     }, 1000)
   }, [])

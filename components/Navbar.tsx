@@ -21,6 +21,7 @@ export default function Navbar() {
     { name: 'Home', href: '/' },
     { name: 'Products', href: '/products' },
     { name: 'AI Try-On', href: '/try-on' },
+    { name: 'Admin', href: '/admin' },
     { name: 'About', href: '/about' },
     { name: 'Contact', href: '/contact' },
   ]

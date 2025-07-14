@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import Navbar from '@/components/Navbar'
+import AdminProductManager from '@/components/AdminProductManager'
+import { ProductManager } from '@/lib/products'
 
 interface DashboardStats {
   totalProducts: number
@@ -23,21 +25,35 @@ export default function AdminDashboard() {
     outOfStockProducts: 0
   })
   const [isLoading, setIsLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('dashboard')
 
   useEffect(() => {
-    // Mock data loading
+    loadStats()
+  }, [])
+
+  const loadStats = () => {
+    // Load real stats from ProductManager
+    const productStats = ProductManager.getStats()
+    
     setTimeout(() => {
       setStats({
-        totalProducts: 156,
-        totalUsers: 2847,
-        totalRevenue: 125000,
-        totalOrders: 3420,
-        featuredProducts: 12,
-        outOfStockProducts: 8
+        totalProducts: productStats.totalProducts,
+        totalUsers: 2847, // Mock data
+        totalRevenue: 125000, // Mock data
+        totalOrders: 3420, // Mock data
+        featuredProducts: productStats.featuredProducts,
+        outOfStockProducts: productStats.outOfStockProducts
       })
       setIsLoading(false)
     }, 1000)
-  }, [])
+  }
+
+  const tabs = [
+    { id: 'dashboard', name: 'Dashboard', icon: '📊' },
+    { id: 'products', name: 'Products', icon: '📦' },
+    { id: 'orders', name: 'Orders', icon: '🛍️' },
+    { id: 'analytics', name: 'Analytics', icon: '📈' }
+  ]
 
   const statCards = [
     {
@@ -126,10 +142,35 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        {/* Stats Grid */}
+        {/* Navigation Tabs */}
+        <section className="px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex space-x-1 bg-gray-800/30 rounded-lg p-1">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md font-cyber text-sm transition-all duration-300 ${
+                    activeTab === tab.id
+                      ? 'bg-gradient-to-r from-neon-pink to-neon-cyan text-black'
+                      : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+                  }`}
+                >
+                  <span>{tab.icon}</span>
+                  {tab.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Tab Content */}
         <section className="py-8 px-4 sm:px-6 lg:px-8">
           <div className="max-w-7xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {activeTab === 'dashboard' && (
+              <>
+                {/* Stats Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               {statCards.map((card, index) => (
                 <motion.div
                   key={card.title}
@@ -276,6 +317,50 @@ export default function AdminDashboard() {
                 </div>
               </motion.div>
             </div>
+              </>
+            )}
+
+            {activeTab === 'products' && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+              >
+                <AdminProductManager onProductsChange={loadStats} />
+              </motion.div>
+            )}
+
+            {activeTab === 'orders' && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+                className="bg-gray-800/50 rounded-lg p-6 border border-gray-700"
+              >
+                <h2 className="text-2xl font-cyber font-bold text-neon-cyan mb-6">ORDER MANAGEMENT</h2>
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">🛍️</div>
+                  <p className="text-xl text-gray-400 font-cyber">Order management coming soon...</p>
+                  <p className="text-gray-500 mt-2">This feature will allow you to manage customer orders, track shipments, and handle returns.</p>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'analytics' && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+                className="bg-gray-800/50 rounded-lg p-6 border border-gray-700"
+              >
+                <h2 className="text-2xl font-cyber font-bold text-neon-cyan mb-6">ANALYTICS & REPORTS</h2>
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">📈</div>
+                  <p className="text-xl text-gray-400 font-cyber">Advanced analytics coming soon...</p>
+                  <p className="text-gray-500 mt-2">This feature will provide detailed insights into sales, customer behavior, and performance metrics.</p>
+                </div>
+              </motion.div>
+            )}
           </div>
         </section>
       </main>

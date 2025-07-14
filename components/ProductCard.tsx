@@ -31,10 +31,24 @@ export default function ProductCard({ product }: ProductCardProps) {
       {/* Product Image */}
       <div className="relative aspect-[4/5] overflow-hidden">
         <div
-          className="w-full h-full bg-gradient-to-br from-neon-pink/20 to-neon-cyan/20 flex items-center justify-center"
+          className="w-full h-full relative"
           onMouseEnter={handleImageHover}
         >
-          <div className="text-6xl text-neon-cyan/50">👕</div>
+          <Image
+            src={product.images[currentImageIndex] || '/api/placeholder/400/500'}
+            alt={product.name}
+            fill
+            className="object-cover transition-transform duration-300 group-hover:scale-110"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            onError={(e) => {
+              // Fallback to placeholder if image fails to load
+              const target = e.target as HTMLImageElement
+              target.src = '/api/placeholder/400/500'
+            }}
+          />
+          
+          {/* Gradient overlay for better text readability */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
         </div>
         
         {/* Overlay effects */}
