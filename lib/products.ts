@@ -38,6 +38,7 @@ const defaultProducts: Product[] = [
     colors: ['Purple Haze', 'Sunset Orange', 'Midnight Black'],
     inStock: true,
     featured: true,
+    model3D: '/models/retro-hoodie.glb',
     createdAt: new Date(),
     updatedAt: new Date()
   },
@@ -55,6 +56,7 @@ const defaultProducts: Product[] = [
     colors: ['Rainbow', 'Silver Chrome', 'Gold Prism'],
     inStock: true,
     featured: false,
+    model3D: '/models/holographic-pants.glb',
     createdAt: new Date(),
     updatedAt: new Date()
   },
@@ -72,6 +74,7 @@ const defaultProducts: Product[] = [
     colors: ['Neon Blue', 'Electric Pink', 'Laser Green'],
     inStock: true,
     featured: true,
+    model3D: '/models/digital-mesh.glb',
     createdAt: new Date(),
     updatedAt: new Date()
   },
@@ -89,6 +92,7 @@ const defaultProducts: Product[] = [
     colors: ['Void Black', 'Plasma White', 'Neon Fusion'],
     inStock: true,
     featured: true,
+    model3D: '/models/quantum-sneakers.glb',
     createdAt: new Date(),
     updatedAt: new Date()
   },
@@ -106,6 +110,7 @@ const defaultProducts: Product[] = [
     colors: ['Chrome', 'Matte Black', 'Neon Accent'],
     inStock: false,
     featured: false,
+    model3D: '/models/cyberpunk-visor.glb',
     createdAt: new Date(),
     updatedAt: new Date()
   }
@@ -142,6 +147,8 @@ export class ProductManager {
     
     try {
       localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(products))
+      // Trigger event for components to update
+      window.dispatchEvent(new Event('productsUpdated'))
     } catch (error) {
       console.error('Error saving products:', error)
     }
@@ -198,7 +205,7 @@ export class ProductManager {
 
   // Get featured products
   static getFeaturedProducts(): Product[] {
-    return this.getProducts().filter(p => p.featured)
+    return this.getProducts().filter(p => p.featured && p.inStock)
   }
 
   // Get products by category
@@ -229,6 +236,18 @@ export class ProductManager {
       categories: [...new Set(products.map(p => p.category))].length,
       averagePrice: products.reduce((sum, p) => sum + p.price, 0) / products.length
     }
+  }
+
+  // Clear all products (for testing)
+  static clearProducts(): void {
+    if (typeof window === 'undefined') return
+    localStorage.removeItem(PRODUCTS_STORAGE_KEY)
+    window.dispatchEvent(new Event('productsUpdated'))
+  }
+
+  // Reset to default products
+  static resetToDefaults(): void {
+    this.saveProducts(defaultProducts)
   }
 }
 
