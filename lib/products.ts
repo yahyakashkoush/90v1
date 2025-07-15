@@ -1,9 +1,16 @@
+/**
+ * Enhanced Product Management System
+ * Integrates with backend API while maintaining fallback to localStorage
+ */
+
 import { Product } from '@/types'
+import { ProductAPI, AdminAPI, ImageAPI, CachedAPI } from './api'
 
-// Local storage key for products
+// Local storage key for offline fallback
 const PRODUCTS_STORAGE_KEY = 'retro_fashion_products'
+const OFFLINE_MODE_KEY = 'retro_fashion_offline_mode'
 
-// Default products with real image URLs
+// Default products for fallback
 const defaultProducts: Product[] = [
   {
     id: '1',
@@ -116,10 +123,55 @@ const defaultProducts: Product[] = [
   }
 ]
 
-// Product management functions
+/**
+ * Enhanced Product Manager with API Integration
+ * Automatically falls back to localStorage when API is unavailable
+ */
 export class ProductManager {
-  // Get all products
-  static getProducts(): Product[] {
+  private static isOfflineMode(): boolean {
+    if (typeof window === 'undefined') return true
+    return localStorage.getItem(OFFLINE_MODE_KEY) === 'true'
+  }
+
+  private static setOfflineMode(offline: boolean): void {
+    if (typeof window === 'undefined') return
+    localStorage.setItem(OFFLINE_MODE_KEY, offline.toString())
+  }
+
+  /**
+   * Get all products with pagination and filtering
+   */
+  static async getProducts(params?: {
+    page?: number
+    limit?: number
+    category?: string
+    minPrice?: number
+    maxPrice?: number
+    featured?: boolean
+    inStock?: boolean
+    search?: string
+    sortBy?: string
+    sortOrder?: 'asc' | 'desc'
+  }): Promise<{ products: Product[]; pagination?: any }> {
+    try {
+      // Try API first
+      if (!this.isOfflineMode()) {
+        const result = await CachedAPI.getProducts(params)
+        return { products: result.data, pagination: result.pagination }
+      }
+    } catch (error) {
+      console.warn('API unavailable, falling back to localStorage:', error)
+      this.setOfflineMode(true)
+    }
+
+    // Fallback to localStorage
+    return { products: this.getLocalProducts(), pagination: null }
+  }
+
+  /**
+   * Get products from localStorage (fallback)
+   */
+  private static getLocalProducts(): Product[] {
     if (typeof window === 'undefined') return defaultProducts
     
     try {
@@ -133,16 +185,18 @@ export class ProductManager {
         }))
       }
     } catch (error) {
-      console.error('Error loading products:', error)
+      console.error('Error loading products from localStorage:', error)
     }
     
     // Initialize with default products
-    this.saveProducts(defaultProducts)
+    this.saveLocalProducts(defaultProducts)
     return defaultProducts
   }
 
-  // Save products to localStorage
-  static saveProducts(products: Product[]): void {
+  /**
+   * Save products to localStorage
+   */
+  private static saveLocalProducts(products: Product[]): void {
     if (typeof window === 'undefined') return
     
     try {
@@ -150,73 +204,60 @@ export class ProductManager {
       // Trigger event for components to update
       window.dispatchEvent(new Event('productsUpdated'))
     } catch (error) {
-      console.error('Error saving products:', error)
+      console.error('Error saving products to localStorage:', error)
     }
   }
 
-  // Get product by ID
-  static getProductById(id: string): Product | null {
-    const products = this.getProducts()
+  /**
+   * Get featured products
+   */
+  static async getFeaturedProducts(): Promise<Product[]> {
+    try {
+      if (!this.isOfflineMode()) {
+        return await CachedAPI.getFeaturedProducts()
+      }
+    } catch (error) {
+      console.warn('API unavailable for featured products, using localStorage')
+      this.setOfflineMode(true)
+    }
+
+    // Fallback to localStorage
+    return this.getLocalProducts().filter(p => p.featured && p.inStock)
+  }
+
+  /**
+   * Get product by ID
+   */
+  static async getProductById(id: string): Promise<Product | null> {
+    try {
+      if (!this.isOfflineMode()) {
+        return await ProductAPI.getProductById(id)
+      }
+    } catch (error) {
+      console.warn('API unavailable for product by ID, using localStorage')
+      this.setOfflineMode(true)
+    }
+
+    // Fallback to localStorage
+    const products = this.getLocalProducts()
     return products.find(p => p.id === id) || null
   }
 
-  // Add new product
-  static addProduct(productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Product {
-    const products = this.getProducts()
-    const newProduct: Product = {
-      ...productData,
-      id: Date.now().toString(),
-      createdAt: new Date(),
-      updatedAt: new Date()
+  /**
+   * Search products
+   */
+  static async searchProducts(query: string): Promise<Product[]> {
+    try {
+      if (!this.isOfflineMode()) {
+        return await ProductAPI.searchProducts(query)
+      }
+    } catch (error) {
+      console.warn('API unavailable for search, using localStorage')
+      this.setOfflineMode(true)
     }
-    
-    products.unshift(newProduct)
-    this.saveProducts(products)
-    return newProduct
-  }
 
-  // Update product
-  static updateProduct(id: string, updates: Partial<Omit<Product, 'id' | 'createdAt'>>): Product | null {
-    const products = this.getProducts()
-    const index = products.findIndex(p => p.id === id)
-    
-    if (index === -1) return null
-    
-    products[index] = {
-      ...products[index],
-      ...updates,
-      updatedAt: new Date()
-    }
-    
-    this.saveProducts(products)
-    return products[index]
-  }
-
-  // Delete product
-  static deleteProduct(id: string): boolean {
-    const products = this.getProducts()
-    const filteredProducts = products.filter(p => p.id !== id)
-    
-    if (filteredProducts.length === products.length) return false
-    
-    this.saveProducts(filteredProducts)
-    return true
-  }
-
-  // Get featured products
-  static getFeaturedProducts(): Product[] {
-    return this.getProducts().filter(p => p.featured && p.inStock)
-  }
-
-  // Get products by category
-  static getProductsByCategory(category: string): Product[] {
-    if (category === 'All') return this.getProducts()
-    return this.getProducts().filter(p => p.category === category)
-  }
-
-  // Search products
-  static searchProducts(query: string): Product[] {
-    const products = this.getProducts()
+    // Fallback to localStorage search
+    const products = this.getLocalProducts()
     const lowercaseQuery = query.toLowerCase()
     
     return products.filter(p => 
@@ -226,9 +267,22 @@ export class ProductManager {
     )
   }
 
-  // Get product statistics
-  static getStats() {
-    const products = this.getProducts()
+  /**
+   * Get product statistics
+   */
+  static async getStats(): Promise<any> {
+    try {
+      if (!this.isOfflineMode()) {
+        const dashboardData = await AdminAPI.getDashboardStats()
+        return dashboardData.stats || {}
+      }
+    } catch (error) {
+      console.warn('API unavailable for stats, calculating from localStorage')
+      this.setOfflineMode(true)
+    }
+
+    // Fallback to localStorage calculation
+    const products = this.getLocalProducts()
     return {
       totalProducts: products.length,
       featuredProducts: products.filter(p => p.featured).length,
@@ -238,41 +292,194 @@ export class ProductManager {
     }
   }
 
-  // Clear all products (for testing)
-  static clearProducts(): void {
-    if (typeof window === 'undefined') return
-    localStorage.removeItem(PRODUCTS_STORAGE_KEY)
-    window.dispatchEvent(new Event('productsUpdated'))
-  }
-
-  // Reset to default products
-  static resetToDefaults(): void {
-    this.saveProducts(defaultProducts)
-  }
-}
-
-// Image upload utility
-export const uploadImage = async (file: File): Promise<string> => {
-  // For demo purposes, we'll use a placeholder service
-  // In production, you'd upload to Cloudinary, AWS S3, etc.
-  
-  return new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      // In a real app, you'd upload the file and get back a URL
-      // For now, we'll use the data URL
-      resolve(e.target?.result as string)
+  /**
+   * Force refresh from API
+   */
+  static async refreshFromAPI(): Promise<void> {
+    try {
+      this.setOfflineMode(false)
+      CachedAPI.clearProductCache()
+      await this.getProducts()
+    } catch (error) {
+      console.error('Failed to refresh from API:', error)
+      this.setOfflineMode(true)
     }
-    reader.readAsDataURL(file)
-  })
+  }
+
+  /**
+   * Check if currently in offline mode
+   */
+  static isCurrentlyOffline(): boolean {
+    return this.isOfflineMode()
+  }
 }
 
-// Validate image URL
-export const isValidImageUrl = (url: string): boolean => {
+/**
+ * Admin Product Manager with full CRUD operations
+ */
+export class AdminProductManager {
+  /**
+   * Get all products for admin with pagination
+   */
+  static async getProducts(params?: {
+    page?: number
+    limit?: number
+    search?: string
+    category?: string
+    inStock?: boolean
+  }): Promise<{ products: Product[]; pagination?: any }> {
+    try {
+      const result = await AdminAPI.getAdminProducts(params)
+      return { products: result.data, pagination: result.pagination }
+    } catch (error) {
+      console.error('Failed to fetch admin products:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Create new product
+   */
+  static async createProduct(productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> {
+    try {
+      const product = await AdminAPI.createProduct(productData)
+      
+      // Clear cache to ensure fresh data
+      CachedAPI.clearProductCache()
+      
+      // Trigger update event
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('productsUpdated'))
+      }
+      
+      return product
+    } catch (error) {
+      console.error('Failed to create product:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Update existing product
+   */
+  static async updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
+    try {
+      const product = await AdminAPI.updateProduct(id, updates)
+      
+      // Clear cache to ensure fresh data
+      CachedAPI.clearProductCache()
+      
+      // Trigger update event
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('productsUpdated'))
+      }
+      
+      return product
+    } catch (error) {
+      console.error('Failed to update product:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Delete product
+   */
+  static async deleteProduct(id: string): Promise<void> {
+    try {
+      await AdminAPI.deleteProduct(id)
+      
+      // Clear cache to ensure fresh data
+      CachedAPI.clearProductCache()
+      
+      // Trigger update event
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('productsUpdated'))
+      }
+    } catch (error) {
+      console.error('Failed to delete product:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Bulk operations
+   */
+  static async bulkOperation(action: string, productIds: string[], updates?: any): Promise<void> {
+    try {
+      await AdminAPI.bulkOperation(action, productIds, updates)
+      
+      // Clear cache to ensure fresh data
+      CachedAPI.clearProductCache()
+      
+      // Trigger update event
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('productsUpdated'))
+      }
+    } catch (error) {
+      console.error('Failed to perform bulk operation:', error)
+      throw error
+    }
+  }
+}
+
+/**
+ * Enhanced image upload with proper error handling
+ */
+export const uploadImage = async (file: File): Promise<string> => {
   try {
-    new URL(url)
-    return url.match(/\.(jpeg|jpg|gif|png|webp)$/i) !== null
-  } catch {
-    return false
+    // Validate file
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Please select a valid image file')
+    }
+
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      throw new Error('Image file is too large. Please select a file under 10MB.')
+    }
+
+    // Try API upload first
+    try {
+      return await ImageAPI.uploadImage(file)
+    } catch (apiError) {
+      console.warn('API upload failed, using fallback:', apiError)
+    }
+
+    // Fallback to data URL for offline mode
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        resolve(e.target?.result as string)
+      }
+      reader.onerror = () => {
+        reject(new Error('Failed to read image file'))
+      }
+      reader.readAsDataURL(file)
+    })
+  } catch (error) {
+    console.error('Image upload failed:', error)
+    throw error
+  }
+}
+
+/**
+ * Enhanced image URL validation
+ */
+export const isValidImageUrl = (url: string): boolean => {
+  return ImageAPI.isValidImageUrl(url)
+}
+
+/**
+ * Get optimized image URL
+ */
+export const getOptimizedImageUrl = (url: string, width?: number, height?: number): string => {
+  return ImageAPI.getOptimizedImageUrl(url, width, height)
+}
+
+/**
+ * Image error handler for React components
+ */
+export const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const target = e.target as HTMLImageElement
+  if (!target.src.includes('placeholder')) {
+    target.src = '/api/placeholder/400/500'
   }
 }

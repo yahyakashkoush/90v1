@@ -1,20 +1,44 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
+import toast from 'react-hot-toast'
 import { Product } from '@/types'
-import { ProductManager, uploadImage, isValidImageUrl } from '@/lib/products'
+import { AdminProductManager, uploadImage, isValidImageUrl, handleImageError } from '@/lib/products'
 
 interface AdminProductManagerProps {
   onProductsChange?: () => void
 }
 
-export default function AdminProductManager({ onProductsChange }: AdminProductManagerProps) {
+interface PaginationInfo {
+  currentPage: number
+  totalPages: number
+  totalItems: number
+  hasNext: boolean
+  hasPrev: boolean
+}
+
+export default function AdminProductManagerComponent({ onProductsChange }: AdminProductManagerProps) {
   const [products, setProducts] = useState<Product[]>([])
   const [isAddingProduct, setIsAddingProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  const [pagination, setPagination] = useState<PaginationInfo>({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    hasNext: false,
+    hasPrev: false
+  })
+
+  // Filters and search
+  const [searchQuery, setSearchQuery] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
+  const [stockFilter, setStockFilter] = useState<boolean | undefined>(undefined)
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -33,18 +57,49 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
   const availableSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '28', '30', '32', '34', '36', '7', '8', '9', '10', '11', '12', 'One Size']
   const availableColors = ['Neon Pink', 'Cyber Blue', 'Electric Green', 'Purple Haze', 'Sunset Orange', 'Midnight Black', 'Rainbow', 'Silver Chrome', 'Gold Prism', 'Void Black', 'Plasma White', 'Neon Fusion']
 
+  // Load products with filters and pagination
+  const loadProducts = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const params = {
+        page: currentPage,
+        limit: 12,
+        ...(searchQuery && { search: searchQuery }),
+        ...(categoryFilter && { category: categoryFilter }),
+        ...(stockFilter !== undefined && { inStock: stockFilter })
+      }
+
+      const result = await AdminProductManager.getProducts(params)
+      setProducts(result.products)
+      
+      if (result.pagination) {
+        setPagination(result.pagination)
+      }
+    } catch (error) {
+      console.error('Failed to load products:', error)
+      toast.error('Failed to load products. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [currentPage, searchQuery, categoryFilter, stockFilter])
+
   useEffect(() => {
     loadProducts()
-  }, [])
+  }, [loadProducts])
 
-  const loadProducts = () => {
-    setIsLoading(true)
-    setTimeout(() => {
-      const loadedProducts = ProductManager.getProducts()
-      setProducts(loadedProducts)
-      setIsLoading(false)
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1) // Reset to first page on search
     }, 500)
-  }
+
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [categoryFilter, stockFilter])
 
   const resetForm = () => {
     setFormData({
@@ -60,34 +115,63 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
     })
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!formData.name || !formData.description || formData.price <= 0) {
-      alert('Please fill in all required fields')
+      toast.error('Please fill in all required fields')
       return
     }
 
-    if (editingProduct) {
-      // Update existing product
-      ProductManager.updateProduct(editingProduct.id, formData)
-      setEditingProduct(null)
-    } else {
-      // Add new product
-      ProductManager.addProduct(formData)
-      setIsAddingProduct(false)
+    if (formData.sizes.length === 0) {
+      toast.error('Please select at least one size')
+      return
     }
 
-    resetForm()
-    loadProducts()
-    onProductsChange?.()
+    if (formData.colors.length === 0) {
+      toast.error('Please select at least one color')
+      return
+    }
+
+    setIsSubmitting(true)
+    
+    try {
+      if (editingProduct) {
+        // Update existing product
+        await AdminProductManager.updateProduct(editingProduct.id, formData)
+        toast.success('Product updated successfully!')
+        setEditingProduct(null)
+      } else {
+        // Add new product
+        await AdminProductManager.createProduct(formData)
+        toast.success('Product created successfully!')
+        setIsAddingProduct(false)
+      }
+
+      resetForm()
+      await loadProducts()
+      onProductsChange?.()
+    } catch (error) {
+      console.error('Failed to save product:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to save product')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this product?')) {
-      ProductManager.deleteProduct(id)
-      loadProducts()
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this product? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      await AdminProductManager.deleteProduct(id)
+      toast.success('Product deleted successfully!')
+      await loadProducts()
       onProductsChange?.()
+    } catch (error) {
+      console.error('Failed to delete product:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to delete product')
     }
   }
 
@@ -107,23 +191,77 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
     setIsAddingProduct(true)
   }
 
+  // Bulk operations
+  const handleBulkAction = async (action: string) => {
+    if (selectedProducts.length === 0) {
+      toast.error('Please select products first')
+      return
+    }
+
+    const confirmMessage = action === 'delete' 
+      ? `Are you sure you want to delete ${selectedProducts.length} products?`
+      : `Are you sure you want to ${action} ${selectedProducts.length} products?`
+
+    if (!confirm(confirmMessage)) {
+      return
+    }
+
+    try {
+      await AdminProductManager.bulkOperation(action, selectedProducts)
+      toast.success(`Bulk ${action} completed successfully!`)
+      setSelectedProducts([])
+      await loadProducts()
+      onProductsChange?.()
+    } catch (error) {
+      console.error('Bulk operation failed:', error)
+      toast.error(error instanceof Error ? error.message : 'Bulk operation failed')
+    }
+  }
+
+  // Product selection
+  const toggleProductSelection = (productId: string) => {
+    setSelectedProducts(prev => 
+      prev.includes(productId)
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId]
+    )
+  }
+
+  const selectAllProducts = () => {
+    if (selectedProducts.length === products.length) {
+      setSelectedProducts([])
+    } else {
+      setSelectedProducts(products.map(p => p.id))
+    }
+  }
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
 
-    const newImages = []
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
+    const uploadPromises = Array.from(files).map(async (file) => {
       if (file.type.startsWith('image/')) {
-        const imageUrl = await uploadImage(file)
-        newImages.push(imageUrl)
+        try {
+          return await uploadImage(file)
+        } catch (error) {
+          console.error('Failed to upload image:', error)
+          toast.error(`Failed to upload ${file.name}`)
+          return null
+        }
       }
-    }
+      return null
+    })
 
-    setFormData(prev => ({
-      ...prev,
-      images: [...prev.images, ...newImages]
-    }))
+    const uploadedImages = await Promise.all(uploadPromises)
+    const validImages = uploadedImages.filter(Boolean) as string[]
+
+    if (validImages.length > 0) {
+      setFormData(prev => ({
+        ...prev,
+        images: [...prev.images, ...validImages]
+      }))
+      toast.success(`${validImages.length} image(s) uploaded successfully`)
+    }
   }
 
   const handleImageUrlAdd = () => {
@@ -133,8 +271,9 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
         ...prev,
         images: [...prev.images, url]
       }))
+      toast.success('Image URL added successfully')
     } else if (url) {
-      alert('Please enter a valid image URL')
+      toast.error('Please enter a valid image URL')
     }
   }
 
@@ -181,15 +320,89 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-cyber font-bold text-neon-cyan">PRODUCT MANAGEMENT</h2>
-        <button
-          onClick={() => setIsAddingProduct(true)}
-          className="px-6 py-3 bg-gradient-to-r from-neon-pink to-neon-cyan text-black font-cyber font-bold rounded-lg hover:scale-105 transition-transform duration-300"
-        >
-          ADD PRODUCT
-        </button>
+      {/* Header with Search and Filters */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <h2 className="text-2xl font-cyber font-bold text-neon-cyan">PRODUCT MANAGEMENT</h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsAddingProduct(true)}
+              className="px-6 py-3 bg-gradient-to-r from-neon-pink to-neon-cyan text-black font-cyber font-bold rounded-lg hover:scale-105 transition-transform duration-300"
+            >
+              ADD PRODUCT
+            </button>
+            {selectedProducts.length > 0 && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleBulkAction('feature')}
+                  className="px-4 py-2 bg-neon-green text-black font-cyber text-sm rounded hover:scale-105 transition-transform"
+                >
+                  FEATURE ({selectedProducts.length})
+                </button>
+                <button
+                  onClick={() => handleBulkAction('delete')}
+                  className="px-4 py-2 bg-red-500 text-white font-cyber text-sm rounded hover:scale-105 transition-transform"
+                >
+                  DELETE ({selectedProducts.length})
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <input
+            type="text"
+            placeholder="Search products..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="px-4 py-2 bg-gray-800 border border-gray-600 rounded text-white placeholder-gray-400"
+          />
+          
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-4 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+          >
+            <option value="">All Categories</option>
+            {categories.map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+          
+          <select
+            value={stockFilter === undefined ? '' : stockFilter.toString()}
+            onChange={(e) => setStockFilter(e.target.value === '' ? undefined : e.target.value === 'true')}
+            className="px-4 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+          >
+            <option value="">All Stock Status</option>
+            <option value="true">In Stock</option>
+            <option value="false">Out of Stock</option>
+          </select>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="selectAll"
+              checked={selectedProducts.length === products.length && products.length > 0}
+              onChange={selectAllProducts}
+              className="w-4 h-4"
+            />
+            <label htmlFor="selectAll" className="text-sm text-gray-300 font-cyber">
+              Select All
+            </label>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="flex gap-4 text-sm text-gray-400">
+          <span>Total: {pagination.totalItems}</span>
+          <span>Page: {pagination.currentPage} of {pagination.totalPages}</span>
+          {selectedProducts.length > 0 && (
+            <span className="text-neon-cyan">Selected: {selectedProducts.length}</span>
+          )}
+        </div>
       </div>
 
       {/* Products Grid */}
@@ -201,6 +414,16 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
             animate={{ opacity: 1, y: 0 }}
             className="bg-gray-800/50 rounded-lg border border-gray-700 overflow-hidden"
           >
+            {/* Selection checkbox */}
+            <div className="absolute top-2 right-2 z-10">
+              <input
+                type="checkbox"
+                checked={selectedProducts.includes(product.id)}
+                onChange={() => toggleProductSelection(product.id)}
+                className="w-4 h-4"
+              />
+            </div>
+
             {/* Product Image */}
             <div className="relative aspect-[4/3]">
               {product.images.length > 0 ? (
@@ -209,10 +432,7 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
                   alt={product.name}
                   fill
                   className="object-cover"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement
-                    target.src = '/api/placeholder/400/300'
-                  }}
+                  onError={handleImageError}
                 />
               ) : (
                 <div className="w-full h-full bg-gradient-to-br from-neon-pink/20 to-neon-cyan/20 flex items-center justify-center">
@@ -269,6 +489,31 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
           </motion.div>
         ))}
       </div>
+
+      {/* Pagination */}
+      {pagination.totalPages > 1 && (
+        <div className="flex justify-center items-center gap-4">
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={!pagination.hasPrev}
+            className="px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
+          >
+            Previous
+          </button>
+          
+          <span className="text-gray-400">
+            Page {pagination.currentPage} of {pagination.totalPages}
+          </span>
+          
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(pagination.totalPages, prev + 1))}
+            disabled={!pagination.hasNext}
+            className="px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       {/* Add/Edit Product Modal */}
       <AnimatePresence>
@@ -382,10 +627,7 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
                               alt={`Product image ${index + 1}`}
                               fill
                               className="object-cover rounded"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement
-                                target.src = '/api/placeholder/100/100'
-                              }}
+                              onError={handleImageError}
                             />
                             <button
                               type="button"
@@ -403,7 +645,7 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
 
                 {/* Sizes */}
                 <div>
-                  <label className="block text-sm font-cyber text-gray-300 mb-2">Sizes</label>
+                  <label className="block text-sm font-cyber text-gray-300 mb-2">Sizes *</label>
                   <div className="flex flex-wrap gap-2">
                     {availableSizes.map(size => (
                       <button
@@ -424,7 +666,7 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
 
                 {/* Colors */}
                 <div>
-                  <label className="block text-sm font-cyber text-gray-300 mb-2">Colors</label>
+                  <label className="block text-sm font-cyber text-gray-300 mb-2">Colors *</label>
                   <div className="flex flex-wrap gap-2">
                     {availableColors.map(color => (
                       <button
@@ -470,9 +712,10 @@ export default function AdminProductManager({ onProductsChange }: AdminProductMa
                 <div className="flex gap-4 pt-4">
                   <button
                     type="submit"
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-neon-pink to-neon-cyan text-black font-cyber font-bold rounded-lg hover:scale-105 transition-transform duration-300"
+                    disabled={isSubmitting}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-neon-pink to-neon-cyan text-black font-cyber font-bold rounded-lg hover:scale-105 transition-transform duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {editingProduct ? 'UPDATE PRODUCT' : 'ADD PRODUCT'}
+                    {isSubmitting ? 'SAVING...' : editingProduct ? 'UPDATE PRODUCT' : 'ADD PRODUCT'}
                   </button>
                   <button
                     type="button"
