@@ -171,7 +171,7 @@ export class ProductManager {
   /**
    * Get products from localStorage (fallback)
    */
-  private static getLocalProducts(): Product[] {
+  static getLocalProducts(): Product[] {
     if (typeof window === 'undefined') return defaultProducts
     
     try {
@@ -196,7 +196,7 @@ export class ProductManager {
   /**
    * Save products to localStorage
    */
-  private static saveLocalProducts(products: Product[]): void {
+  static saveLocalProducts(products: Product[]): void {
     if (typeof window === 'undefined') return
     
     try {
@@ -315,7 +315,7 @@ export class ProductManager {
 }
 
 /**
- * Admin Product Manager with full CRUD operations
+ * Admin Product Manager with full CRUD operations and localStorage fallback
  */
 export class AdminProductManager {
   /**
@@ -329,19 +329,59 @@ export class AdminProductManager {
     inStock?: boolean
   }): Promise<{ products: Product[]; pagination?: any }> {
     try {
+      // Try API first
       const result = await AdminAPI.getAdminProducts(params)
       return { products: result.data, pagination: result.pagination }
     } catch (error) {
-      console.error('Failed to fetch admin products:', error)
-      throw error
+      console.warn('Admin API unavailable, using localStorage fallback:', error)
+      
+      // Fallback to localStorage with filtering
+      let products = ProductManager.getLocalProducts()
+      
+      // Apply filters
+      if (params?.search) {
+        const query = params.search.toLowerCase()
+        products = products.filter(p => 
+          p.name.toLowerCase().includes(query) ||
+          p.description.toLowerCase().includes(query) ||
+          p.category.toLowerCase().includes(query)
+        )
+      }
+      
+      if (params?.category) {
+        products = products.filter(p => p.category === params.category)
+      }
+      
+      if (params?.inStock !== undefined) {
+        products = products.filter(p => p.inStock === params.inStock)
+      }
+      
+      // Simple pagination
+      const page = params?.page || 1
+      const limit = params?.limit || 12
+      const startIndex = (page - 1) * limit
+      const endIndex = startIndex + limit
+      const paginatedProducts = products.slice(startIndex, endIndex)
+      
+      return {
+        products: paginatedProducts,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(products.length / limit),
+          totalItems: products.length,
+          hasNext: endIndex < products.length,
+          hasPrev: page > 1
+        }
+      }
     }
   }
 
   /**
-   * Create new product
+   * Create new product with localStorage fallback
    */
   static async createProduct(productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> {
     try {
+      // Try API first
       const product = await AdminAPI.createProduct(productData)
       
       // Clear cache to ensure fresh data
@@ -354,16 +394,30 @@ export class AdminProductManager {
       
       return product
     } catch (error) {
-      console.error('Failed to create product:', error)
-      throw error
+      console.warn('Admin API unavailable, using localStorage fallback:', error)
+      
+      // Fallback to localStorage
+      const products = ProductManager.getLocalProducts()
+      const newProduct: Product = {
+        ...productData,
+        id: Date.now().toString(),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+      
+      products.unshift(newProduct)
+      ProductManager.saveLocalProducts(products)
+      
+      return newProduct
     }
   }
 
   /**
-   * Update existing product
+   * Update existing product with localStorage fallback
    */
   static async updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
     try {
+      // Try API first
       const product = await AdminAPI.updateProduct(id, updates)
       
       // Clear cache to ensure fresh data
@@ -376,16 +430,33 @@ export class AdminProductManager {
       
       return product
     } catch (error) {
-      console.error('Failed to update product:', error)
-      throw error
+      console.warn('Admin API unavailable, using localStorage fallback:', error)
+      
+      // Fallback to localStorage
+      const products = ProductManager.getLocalProducts()
+      const index = products.findIndex(p => p.id === id)
+      
+      if (index === -1) {
+        throw new Error('Product not found')
+      }
+      
+      products[index] = {
+        ...products[index],
+        ...updates,
+        updatedAt: new Date()
+      }
+      
+      ProductManager.saveLocalProducts(products)
+      return products[index]
     }
   }
 
   /**
-   * Delete product
+   * Delete product with localStorage fallback
    */
   static async deleteProduct(id: string): Promise<void> {
     try {
+      // Try API first
       await AdminAPI.deleteProduct(id)
       
       // Clear cache to ensure fresh data
@@ -396,16 +467,26 @@ export class AdminProductManager {
         window.dispatchEvent(new Event('productsUpdated'))
       }
     } catch (error) {
-      console.error('Failed to delete product:', error)
-      throw error
+      console.warn('Admin API unavailable, using localStorage fallback:', error)
+      
+      // Fallback to localStorage
+      const products = ProductManager.getLocalProducts()
+      const filteredProducts = products.filter(p => p.id !== id)
+      
+      if (filteredProducts.length === products.length) {
+        throw new Error('Product not found')
+      }
+      
+      ProductManager.saveLocalProducts(filteredProducts)
     }
   }
 
   /**
-   * Bulk operations
+   * Bulk operations with localStorage fallback
    */
   static async bulkOperation(action: string, productIds: string[], updates?: any): Promise<void> {
     try {
+      // Try API first
       await AdminAPI.bulkOperation(action, productIds, updates)
       
       // Clear cache to ensure fresh data
@@ -416,8 +497,39 @@ export class AdminProductManager {
         window.dispatchEvent(new Event('productsUpdated'))
       }
     } catch (error) {
-      console.error('Failed to perform bulk operation:', error)
-      throw error
+      console.warn('Admin API unavailable, using localStorage fallback:', error)
+      
+      // Fallback to localStorage
+      const products = ProductManager.getLocalProducts()
+      
+      switch (action) {
+        case 'delete':
+          const filteredProducts = products.filter(p => !productIds.includes(p.id))
+          ProductManager.saveLocalProducts(filteredProducts)
+          break
+          
+        case 'feature':
+        case 'unfeature':
+          const updatedProducts = products.map(p => 
+            productIds.includes(p.id) 
+              ? { ...p, featured: action === 'feature', updatedAt: new Date() }
+              : p
+          )
+          ProductManager.saveLocalProducts(updatedProducts)
+          break
+          
+        case 'update':
+          const modifiedProducts = products.map(p => 
+            productIds.includes(p.id) 
+              ? { ...p, ...updates, updatedAt: new Date() }
+              : p
+          )
+          ProductManager.saveLocalProducts(modifiedProducts)
+          break
+          
+        default:
+          throw new Error(`Unsupported bulk action: ${action}`)
+      }
     }
   }
 }
